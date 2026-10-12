@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepVuln | Code Security Analyzer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+
+<body>
+<header class="topbar">
+    <a class="brand" href="/">DeepVuln<span>.</span></a>
+    <div class="status"><i></i> Security Scanner Ready</div>
+</header>
+
+<main class="container">
+    <section class="hero">
+        <p class="eyebrow">CODE SECURITY ANALYZER</p>
+        <h1>Find potential code<br><span>vulnerabilities.</span></h1>
+        <p class="subtitle">
+            Analyze C/C++ source code, identify potential security flaws and risky lines,
+            and inspect explanations with suggested mitigations.
+        </p>
+    </section>
+
+    <section class="workspace">
+        <!-- 1. SOURCE CODE BOX (ABOVE) -->
+        <div class="panel">
+            <div class="panel-heading">
+                <div>
+                    <h2>Source Code</h2>
+                    <p>Paste a C/C++ function to analyze</p>
+                </div>
+                <span class="language">C / C++</span>
+            </div>
+
+            <textarea id="codeInput" spellcheck="false"
+                placeholder="// Paste your C/C++ code here...
+
+int copy_data(char *dst, const char *src, int size) {
+    if (size <= 0) return -1;
+    memcpy(dst, src, size);
+    return 0;
+}"></textarea>
+
+            <div class="editor-footer">
+                <span id="charCount">0 characters</span>
+                <button id="analyzeBtn" onclick="analyzeCode()">
+                    Analyze code →
+                </button>
+            </div>
+
+            <p class="hint">
+                Do not paste passwords, keys, or private secrets.
+            </p>
+        </div>
+
+        <!-- 2. ANALYSIS RESULT BOX (DOWN / BELOW) -->
+        <div class="panel">
+            <div class="panel-heading">
+                <div>
+                    <h2>Analysis Result</h2>
+                    <p>Overall function-level security assessment</p>
+                </div>
+                <span class="language">Security Engine</span>
+            </div>
+
+            <div id="emptyState" class="empty-state">
+                <div class="empty-symbol">⌁</div>
+                <h3>Ready to analyze</h3>
+                <p>Submit your source code above to generate an assessment.</p>
+            </div>
+
+            <div id="loadingState" class="empty-state hidden">
+                <div class="spinner"></div>
+                <h3>Analyzing code...</h3>
+                <p>Scanning code patterns and calculating vulnerability risk.</p>
+            </div>
+
+            <div id="resultState" class="hidden">
+                <div id="predictionBadge" class="prediction-badge">
+                    Prediction
+                </div>
+
+                <div class="score-heading">
+                    <span>Vulnerability risk score</span>
+                    <strong id="scoreText">0%</strong>
+                </div>
+
+                <div class="progress-track">
+                    <div id="scoreBar" class="progress-bar"></div>
+                </div>
+
+                <p id="resultDescription" class="result-description"></p>
+
+                <div class="stats">
+                    <div class="stat">
+                        <span>Lines Scanned</span>
+                        <strong id="lineCountStat">—</strong>
+                    </div>
+                    <div class="stat">
+                        <span>Issues Flagged</span>
+                        <strong id="flaggedCount">—</strong>
+                    </div>
+                    <div class="stat">
+                        <span>Security Status</span>
+                        <strong id="riskStatus">—</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div id="errorBox" class="error-box hidden"></div>
+        </div>
+
+        <!-- 3. FINDINGS PANEL (DOWN / BELOW) -->
+        <section class="panel findings-panel">
+            <div class="panel-heading">
+                <div>
+                    <h2>Vulnerable line numbers and explanations</h2>
+                    <p>Potentially risky lines, reasons, and recommended fixes</p>
+                </div>
+                <span id="findingCount" class="language">0 findings</span>
+            </div>
+
+            <div id="findingsList" class="findings-list">
+                <div class="no-findings">
+                    Analyze code to inspect line-level findings.
+                </div>
+            </div>
+
+            <p class="warning">
+                Findings are heuristic pattern detections. Unflagged code may still contain vulnerabilities and requires comprehensive security testing.
+            </p>
+        </section>
+    </section>
+
+    <footer>
+        DeepVuln · Code Security Analyzer · Results require independent verification
+    </footer>
+</main>
+
+<script>
+const codeInput = document.getElementById("codeInput");
+const analyzeBtn = document.getElementById("analyzeBtn");
+
+codeInput.addEventListener("input", () => {
+    document.getElementById("charCount").textContent =
+        `${codeInput.value.length} characters`;
+});
+
+function show(id) {
+    document.getElementById(id).classList.remove("hidden");
+}
+
+function hide(id) {
+    document.getElementById(id).classList.add("hidden");
+}
+
+function showError(message) {
+    const box = document.getElementById("errorBox");
+    box.textContent = message;
+    show("errorBox");
+}
+
+function renderFindings(findings) {
+    const list = document.getElementById("findingsList");
+    list.replaceChildren();
+
+    document.getElementById("findingCount").textContent =
+        `${findings.length} finding${findings.length === 1 ? "" : "s"}`;
+
+    if (!findings.length) {
+        const empty = document.createElement("div");
+        empty.className = "no-findings";
+        empty.textContent =
+            "No matching risky patterns detected. This does not prove the code is completely safe.";
+        list.appendChild(empty);
+        return;
+    }
+
+    findings.forEach(f => {
+        const card = document.createElement("article");
+        card.className = "finding-card";
+
+        const header = document.createElement("div");
+        header.className = "finding-top";
+
+        const title = document.createElement("h3");
+        title.textContent = f.title;
+
+        const severity = document.createElement("span");
+        severity.className =
+            "severity " + String(f.severity).toLowerCase();
+        severity.textContent = f.severity;
+
+        const line = document.createElement("span");
+        line.className = "line-number";
+        line.textContent = `Line ${f.line}`;
+
+        header.append(title, severity, line);
+
+        const sourceLabel = document.createElement("strong");
+        sourceLabel.textContent = "Matched source line";
+
+        const source = document.createElement("pre");
+        source.className = "finding-code";
+        source.textContent = f.code;
+
+        const reasonLabel = document.createElement("strong");
+        reasonLabel.textContent = "Why it may be vulnerable";
+
+        const reason = document.createElement("p");
+        reason.textContent = f.reason;
+
+        const fixLabel = document.createElement("strong");
+        fixLabel.textContent = "Suggested mitigation";
+
+        const fix = document.createElement("p");
+        fix.textContent = f.recommendation;
+
+        card.append(
+            header,
+            sourceLabel,
+            source,
+            reasonLabel,
+            reason,
+            fixLabel,
+            fix
+        );
+
+        list.appendChild(card);
+    });
+}
+
+async function analyzeCode() {
+    const code = codeInput.value;
+
+    hide("errorBox");
+    hide("resultState");
+
+    if (!code.trim()) {
+        showError("Please paste some C/C++ code first.");
+        return;
+    }
+
+    hide("emptyState");
+    show("loadingState");
+
+    analyzeBtn.disabled = true;
+    analyzeBtn.textContent = "Analyzing...";
+
+    try {
+        const response = await fetch("/analyze", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ code })
+        });
+
+        const data = await response.json();
+
+        // Render line-level findings if present
+        if (Array.isArray(data.findings)) {
+            renderFindings(data.findings);
+        }
+
+        if (!response.ok) {
+            throw new Error(data.error || "Analysis failed.");
+        }
+
+        const isVulnerable = data.label === 1;
+        const score = Number(data.vulnerability_score) || 0;
+
+        document.getElementById("predictionBadge").textContent =
+            data.prediction || (isVulnerable ? "Vulnerable" : "Non-Vulnerable");
+
+        document.getElementById("predictionBadge").className =
+            "prediction-badge " + (isVulnerable ? "danger" : "safe");
+
+        document.getElementById("scoreText").textContent = `${score}%`;
+
+        const scoreBar = document.getElementById("scoreBar");
+        scoreBar.style.width = `${Math.min(Math.max(score, 0), 100)}%`;
+        scoreBar.className = "progress-bar " + (isVulnerable ? "danger-bar" : "safe-bar");
+
+        document.getElementById("resultDescription").textContent =
+            isVulnerable
+            ? "The analysis indicates this function may be vulnerable. Review memory handling, buffer bounds, and pointer logic."
+            : "No high-confidence vulnerabilities detected in this snippet. Ensure adherence to secure coding standards.";
+
+        // Update clean metrics
+        const lineCount = code.split("\n").length;
+        if (document.getElementById("lineCountStat")) {
+            document.getElementById("lineCountStat").textContent = lineCount;
+        }
+        if (document.getElementById("flaggedCount")) {
+            const count = Array.isArray(data.findings) ? data.findings.length : (isVulnerable ? 1 : 0);
+            document.getElementById("flaggedCount").textContent = count;
+        }
+        if (document.getElementById("riskStatus")) {
+            document.getElementById("riskStatus").textContent = isVulnerable ? "Flagged Risk" : "Clean";
+        }
+
+        hide("loadingState");
+        show("resultState");
+
+    } catch (error) {
+        hide("loadingState");
+        show("emptyState");
+        showError(error.message);
+    } finally {
+        analyzeBtn.disabled = false;
+        analyzeBtn.textContent = "Analyze code →";
+    }
+}
+</script>
+</body>
+</html>

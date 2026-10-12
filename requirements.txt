@@ -1,0 +1,7 @@
+Flask
+pandas
+pyarrow
+numpy
+scikit-learn
+torch
+tree-sitter-language-pack
